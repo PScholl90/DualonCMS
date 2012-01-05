@@ -1,5 +1,5 @@
 <?php
-App::uses('AppController', 'Controller', 'CakeEmail', 'Network/Email');
+App::uses('AppController', 'Controller');
 /**
  * Users Controller
  *
@@ -8,8 +8,8 @@ App::uses('AppController', 'Controller', 'CakeEmail', 'Network/Email');
 
 class UsersController extends AppController
 {
-    public $uses = array('User', 'Role', 'MenuEntry');
-    var $components = array('Email', 'Password', 'Menu');
+    public $uses = array('User', 'Role', 'MenuEntry', 'CakeEmail', 'Network/Email');
+    var $components = array('Password', 'Menu');
 
     /**
      * index method
@@ -51,13 +51,13 @@ class UsersController extends AppController
             $now = date('Y-m-d H:i:s');
             $user['registered'] = $now;
             //generate confirmation token
-            $token = sha1($this->data['User']['username'] . rand(0, 100));
+            $token = sha1($user['username'] . rand(0, 100));
             //modify value of 'confirmation_token' attribute to generated token!
             $user['confirmation_token'] = $token;
             //set status to "new"
-            $user['status'] = 0;
+            $user['status'] = false;
             //set role to "registered"
-            $role = $this->Role->findByName('registered');
+            $role = $this->Role->findByName('Registered');
             $roleId = $role['Role']['id'];
             $user['role_id'] = $roleId;
 
@@ -65,17 +65,25 @@ class UsersController extends AppController
             //save data to database
             if ($this->User->save($user)) {
                 //build email header for verification
-                //$this->Email->from = 'ouremail@dualoncms.com';
-                //$this->Email->to = $this->request->data['User']['email'];
-                //$this->Email->subject = 'Confirmation of your registration at dualoncms.com';
-                //build email body for verification
-
-                //send email for verification
-
-                $this->Session->setFlash(__('The user has been saved'));
-                $this->redirect(array('action' => 'index'));
+            	$activeConfiguration;
+            	//create email
+            	$email = new CakeEmail();
+            	//set template+layout and view parameters
+            	$email->template('user_confirmation','default');
+            	$email->emailFormat('both');
+            	$email->viewVars('username', $user['username']);
+            	$email->viewVars('userId', $user['id']);
+            	$email->viewVars('confirmationToken', $user['confirmation_token']);
+            	$email->viewVars('url', 'DualonCMS.de');
+            	//set header parameters
+            	$email->from(array('noreplay@dualon.com' => 'DualonCMS'));
+            	$email->to($user['email']);
+            	$email->subject('User confirmation required for your registration');
+            	$email->send();
+            	
+            	$this->redirect(array('action' => 'index'));
             } else {
-                $this->Session->setFlash(__('The user could not be saved. Please, try again.'));
+                
             }
         }
         $roles = $this->User->Role->find('list');
@@ -83,6 +91,25 @@ class UsersController extends AppController
         $this->set('adminMode', false);
         $this->set('menu', $this->Menu->buildMenu($this, NULL));
         $this->set('systemPage', true);
+    }
+    
+    public function activate($userId = null, $tokenIn = null){
+    	$this->User->id = $userId;
+    	if ($this->User->exists()){
+    		$this->User->id = $userId;
+    		$userDB = $this->User->findById($userId);
+    		$tokenDB = $userDB['User']['confirmation_token'];
+    		if ($tokenIn == $tokenDB){
+    			// Update the status flag to active
+    			$this->User->saveField('status', true);
+    			// Let the user know they can now log in!
+    			$this->redirect('/');
+    		} else{
+    			//token incorrect exception
+    		}
+    	} else{
+    		//user not exists exception
+    	}
     }
 
     /**
@@ -142,22 +169,32 @@ class UsersController extends AppController
     function login()
     {
         if ($this->request->is('post')) {
-            //if user is already logged in
-            if ($this->Session->read('Auth.User')) {
-                $this->Session->setFlash('You are already logged in!');
-            }
-            //if user isn't already logged in
-            else {
-                if ($this->Auth->login()) {
-                    //update "last_login"
-                    $this->User->id = $this->Auth->user('id');
-                    $now = date('Y-m-d H:i:s');
-                    $this->User->saveField('last_login', $now);
-
-                    $this->redirect($this->Auth->redirect());
-                } else {
-                    $this->Session->setFlash('Your username or password was incorrect.');
-                }
+            $userIn = $this->request->data['User'];
+            $userDB = $this->User->findByUsername($userIn['username']);
+            if($userDB['User']['status'] == true){
+            	//if user is already logged in
+            	if ($this->Session->read('Auth.User')) {
+            		$this->Session->setFlash('You are already logged in!');
+            	}
+            	//if user isn't already logged in
+            	else {
+            		//if user is active
+            	
+            		//user is not active
+            		 
+            		if ($this->Auth->login()) {
+            			//update "last_login"
+            			$this->User->id = $this->Auth->user('id');
+            			$now = date('Y-m-d H:i:s');
+            			$this->User->saveField('last_login', $now);
+            	
+            			$this->redirect($this->Auth->redirect());
+            		} else {
+            			$this->Session->setFlash('Your username or password was incorrect.');
+            		}
+            	}
+            } else{
+            	
             }
         }
         $this->set('menu', $this->Menu->buildMenu($this, NULL));
@@ -172,7 +209,6 @@ class UsersController extends AppController
      */
     function logout()
     {
-        $this->Session->setFlash('Good-Bye');
         $this->redirect($this->Auth->logout());
     }
 
@@ -184,7 +220,7 @@ class UsersController extends AppController
     function beforeFilter()
     {
         parent::beforeFilter();
-        $this->Auth->allow('register', 'logout');
+        $this->Auth->allow('register', 'logout', 'activate', 'resetPassword');
         $this->Auth->autoRedirect = false;
     }
 
@@ -194,7 +230,7 @@ class UsersController extends AppController
      * Passwordlenght is 10 characters
      * @return void
      */
-    function resetpassword($id = null)
+    function resetPassword($id = null)
     {
         $this->User->id = $id;
         //check if user exist
@@ -220,11 +256,11 @@ class UsersController extends AppController
                 $this->Email->to = $this->request->data['User']['email'];
                 $this->Email->subject = 'DualonCMS: Your new password';
                 $this->Email->sendAs = 'both'; // because we like to send pretty mail
-                $this->email->send("Your new paaword is " + $newpw + ".<br> Please change it imemdiately! <br><br> Your DualonCMS administrator");
-                $this->Session->setFlash(('User password reseted. Please check your emails!'));
+                $this->email->send("Your new password is " + $newpw + ".<br> Please change it imemdiately! <br><br> Your DualonCMS administrator");
+                $this->Session->setFlash(('User password resetted. Please check your emails!'));
                 //$this->redirect(array('action'=>'index'));
             } else {
-                $this->Session->setFlash(('Userpassword was not reseted.You received an email with your new password!'));
+                $this->Session->setFlash(('User password was not resetted. You received an email with your new password!'));
             }
         } else {
             $this->request->data = $this->User->read(null, $id);
