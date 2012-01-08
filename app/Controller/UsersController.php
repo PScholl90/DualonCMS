@@ -1,5 +1,5 @@
 <?php
-App::uses('AppController', 'Controller');
+App::uses('CakeEmail', 'Network/Email', 'AppController', 'Controller');
 /**
  * Users Controller
  *
@@ -8,7 +8,7 @@ App::uses('AppController', 'Controller');
 
 class UsersController extends AppController
 {
-    public $uses = array('User', 'Role', 'MenuEntry', 'CakeEmail', 'Network/Email');
+    public $uses = array('User', 'Role', 'MenuEntry');
     var $components = array('Password', 'Menu');
 
     /**
@@ -67,19 +67,31 @@ class UsersController extends AppController
                 //build email header for verification
             	$activeConfiguration;
             	//create email
-            	$email = new CakeEmail();
+            	/*$email = new CakeEmail();
             	//set template+layout and view parameters
-            	$email->template('user_confirmation','default');
-            	$email->emailFormat('both');
-            	$email->viewVars('username', $user['username']);
-            	$email->viewVars('userId', $user['id']);
-            	$email->viewVars('confirmationToken', $user['confirmation_token']);
-            	$email->viewVars('url', 'DualonCMS.de');
+            	$email->template('user_confirmation','email')
+            		->emailFormat('html')
+            		->viewVars('username', $user['username'])
+            	//$email->viewVars('userId', $user['id'])
+            		->viewVars('confirmationToken', $user['confirmation_token'])
+            		->viewVars('url', 'beePublished.de')
             	//set header parameters
-            	$email->from(array('noreplay@dualon.com' => 'DualonCMS'));
-            	$email->to($user['email']);
-            	$email->subject('User confirmation required for your registration');
-            	$email->send();
+            		->from('noreplay@beepublished.de', 'beePublished')
+            		->to($user['email'])
+            		->subject('Registration complete - Please confirm your account')
+            		->transport('Mail')
+            		->send();*/
+            	
+            	$email = new CakeEmail();
+            	$email->template('user_confirmation', 'email')
+            	->emailFormat('html')
+            	->to($user['email'])
+            	->from('noreply@domain.com')
+            	->viewVars(array(
+            		'username' => $user['username'],
+            		'url' => 'beePublished.de'
+            	))
+            	->send();
             	
             	$this->redirect(array('action' => 'index'));
             } else {
@@ -93,7 +105,7 @@ class UsersController extends AppController
         $this->set('systemPage', true);
     }
     
-    public function activate($userId = null, $tokenIn = null){
+    public function activateUser($userId = null, $tokenIn = null){
     	$this->User->id = $userId;
     	if ($this->User->exists()){
     		$this->User->id = $userId;
