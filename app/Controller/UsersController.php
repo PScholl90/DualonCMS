@@ -64,32 +64,18 @@ class UsersController extends AppController
             $this->request->data['User'] = $user;
             //save data to database
             if ($this->User->save($user)) {
-                //build email header for verification
-            	$activeConfiguration;
-            	//create email
-            	/*$email = new CakeEmail();
-            	//set template+layout and view parameters
-            	$email->template('user_confirmation','email')
-            		->emailFormat('html')
-            		->viewVars('username', $user['username'])
-            	//$email->viewVars('userId', $user['id'])
-            		->viewVars('confirmationToken', $user['confirmation_token'])
-            		->viewVars('url', 'beePublished.de')
-            	//set header parameters
-            		->from('noreplay@beepublished.de', 'beePublished')
-            		->to($user['email'])
-            		->subject('Registration complete - Please confirm your account')
-            		->transport('Mail')
-            		->send();*/
-            	
+            	//create email and set header fields and viewVars
             	$email = new CakeEmail();
             	$email->template('user_confirmation', 'email')
             	->emailFormat('html')
             	->to($user['email'])
-            	->from('noreply@domain.com')
+            	->from('noreply@'.env('SERVER_NAME'))
+            	->subject('Registration complete - Please confirm your account')
             	->viewVars(array(
             		'username' => $user['username'],
-            		'url' => 'beePublished.de'
+            		'activationUrl' => 'http://'.env('SERVER_NAME').':'.env('SERVER_PORT').$this->webroot.'users/activateUser/'.$this->User->getLastInsertID().'/'.$user['confirmation_token'],
+            		'url' => env('SERVER_NAME'),
+            		'confirmationToken' => $user['confirmation_token']
             	))
             	->send();
             	
@@ -114,8 +100,21 @@ class UsersController extends AppController
     		if ($tokenIn == $tokenDB){
     			// Update the status flag to active
     			$this->User->saveField('status', true);
+    			
+    			//create email and set header fields and viewVars
+    			$anEmail = new CakeEmail();
+    			$anEmail->template('user_activated', 'email')
+    			->emailFormat('html')
+    			->to($userDB['User']['email'])
+    			->from('noreply@dualon.de')
+    			->subject('User activated')
+    			->viewVars(array(
+    					'username' => $userDB['User']['username'],
+    					'url' => env('SERVER_NAME')
+    			))
+    			->send();
     			// Let the user know they can now log in!
-    			$this->redirect('/');
+    			$this->redirect(array('action' => 'login'));
     		} else{
     			//token incorrect exception
     		}
@@ -232,7 +231,7 @@ class UsersController extends AppController
     function beforeFilter()
     {
         parent::beforeFilter();
-        $this->Auth->allow('register', 'logout', 'activate', 'resetPassword');
+        $this->Auth->allow('register', 'logout', 'activateUser', 'resetPassword');
         $this->Auth->autoRedirect = false;
     }
 
@@ -268,7 +267,7 @@ class UsersController extends AppController
                 $this->Email->to = $this->request->data['User']['email'];
                 $this->Email->subject = 'DualonCMS: Your new password';
                 $this->Email->sendAs = 'both'; // because we like to send pretty mail
-                $this->email->send("Your new password is " + $newpw + ".<br> Please change it imemdiately! <br><br> Your DualonCMS administrator");
+                $this->email->send("Your new password is " + $newpw + ".<br> Please change it immediately! <br><br> Your DualonCMS administrator");
                 $this->Session->setFlash(('User password resetted. Please check your emails!'));
                 //$this->redirect(array('action'=>'index'));
             } else {
@@ -285,7 +284,7 @@ class UsersController extends AppController
      * @param string $id
      * @return void
      */
-    function changerole($id = null, $newRole = null)
+    function changeRole($id = null, $newRole = null)
     {
         $this->User->id = $id;
         if (!$this->User->exists()) {
