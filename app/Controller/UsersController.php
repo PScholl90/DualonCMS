@@ -84,8 +84,6 @@ class UsersController extends AppController
                 
             }
         }
-        $roles = $this->User->Role->find('list');
-        $this->set(compact('roles'));
         $this->set('adminMode', false);
         $this->set('menu', $this->Menu->buildMenu($this, NULL));
         $this->set('systemPage', true);
@@ -113,13 +111,14 @@ class UsersController extends AppController
     					'url' => env('SERVER_NAME')
     			))
     			->send();
-    			// Let the user know they can now log in!
+    			
     			$this->redirect(array('action' => 'login'));
     		} else{
     			//token incorrect exception
     		}
     	} else{
     		//user not exists exception
+    		throw new NotFoundException(__('Invalid user'));
     	}
     }
 
@@ -238,43 +237,61 @@ class UsersController extends AppController
     /**
      * resetPassword function
      * Generates a new password and send it per email to the user
-     * Passwordlenght is 10 characters
+     * Passwordlength is 10 characters
      * @return void
      */
     function resetPassword($id = null)
     {
-        $this->User->id = $id;
+        if($this->request->is('post') || $this->request->is('put')) {
+        	$id = $this->request->data['id'];
+        }
+    	$this->User->id = $id;
         //check if user exist
         if (!$this->User->exists()) {
-            throw new NotFoundException(('Invalid user'));
+            throw new NotFoundException('Invalid user');
         }
+        $userDB = $this->User->findById($id);
 
-        $role = $this->Role->findById('roleId');
-        $roleId = $role['Role']['id'];
-        $user['role_id'] = $roleId;
-        //read user
-        $user =
-            // Generates a new password (10 characters)
+        // Generates a new password (10 characters)
         $newpw = $this->Password->generatePassword(10);
         //Set new password
         $this->User->password = $newpw;
 
-        if ($this->request->is('post') || $this->request->is('put')) {
-            if ($this->User->save($this->request->data)) {
-
-                //build email header for verification
-                $this->Email->from = 'tmp@dualoncms.de';
-                $this->Email->to = $this->request->data['User']['email'];
-                $this->Email->subject = 'DualonCMS: Your new password';
-                $this->Email->sendAs = 'both'; // because we like to send pretty mail
-                $this->email->send("Your new password is " + $newpw + ".<br> Please change it immediately! <br><br> Your DualonCMS administrator");
-                $this->Session->setFlash(('User password resetted. Please check your emails!'));
-                //$this->redirect(array('action'=>'index'));
-            } else {
-                $this->Session->setFlash(('User password was not resetted. You received an email with your new password!'));
-            }
-        } else {
-            $this->request->data = $this->User->read(null, $id);
+		if ($this->User->save($this->request->data)) {
+			//create email and set header fields and viewVars
+			$anEmail = new CakeEmail();
+			$anEmail->template('password_resetted', 'email')
+			->emailFormat('html')
+			->to($userDB['User']['email'])
+			->from('noreply@'.env('SERVER_NAME'))
+			->subject(env('SERVER_NAME').' - Your new password')
+			->viewVars(array(
+				'username' => $userDB['User']['username'],
+				'url' => env('SERVER_NAME')
+			))
+			->send();
+			
+			$this->redirect(array('action'=>'login'));
+		} else {
+			$this->Session->setFlash(('User password was not resetted. You received an email with your new password!'));
+		}
+    }
+    
+    function changePassword($userId = null, $newPassword = null){
+    	if($this->request->is('post') || $this->request->is('ajax')){
+    		$userId = $this->request->data['userId'];
+    		$newPassword = $this->request->data['newPassword'];
+    	}
+    	
+    	$this->User->id = $userId;
+    	if (!$this->User->exists()) {
+            throw new NotFoundException(('Invalid user'));
+        }
+        
+        if($this->User->saveField('password', $newPassword)){
+        	
+        } else{
+        	
         }
     }
 
@@ -308,11 +325,6 @@ class UsersController extends AppController
         } else {
             $this->request->data = $this->User->read(null, $id);
         }
-        $this->User->recursive = 0;
-        $this->set('users', $this->paginate());
-        //Roles auflisten
-        $roles = $this->User->Role->find('list');
-        $this->set(compact('roles'));
     }
 
 }
